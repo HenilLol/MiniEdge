@@ -548,3 +548,69 @@ func TestGatewayRateLimitingThrottling(t *testing.T) {
 		t.Errorf("unexpected 429 logged event details: %+v", logs[0])
 	}
 }
+
+// Test K — API Routing Interception (/api, /api/metrics, /apiXYZ)
+func TestAPIRoutingInterception(t *testing.T) {
+	routes := []model.Route{
+		{Path: "/apiXYZ", ServiceID: "apixyz-service"},
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("apixyz response"))
+	}))
+	defer upstream.Close()
+
+	services := []model.Service{
+		{ID: "apixyz-service", Name: "APIXYZ Service", Upstream: upstream.URL},
+	}
+
+	obsStore := observability.NewStore(100)
+	apiHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"intercepted": true}`))
+	})
+
+	r := router.NewPrefixRouter(routes)
+	reg := router.NewStaticServiceRegistry(services)
+	px := proxy.NewServiceProxy(5 * time.Second)
+
+	gwHandler := gateway.NewGatewayHandler(r, reg, px, obsStore, 5*time.Second)
+	gwHandler.SetAPIHandler(apiHandler)
+
+	gwServer := httptest.NewServer(gwHandler)
+	defer gwServer.Close()
+
+	// 1. /api -> intercepted by API handler
+	resp1, err := http.Get(gwServer.URL + "/api")
+	if err != nil || resp1.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 OK for /api, got %v, err=%v", resp1.StatusCode, err)
+	}
+	body1, _ := io.ReadAll(resp1.Body)
+	resp1.Body.Close()
+	if string(body1) != `{"intercepted": true}` {
+		t.Errorf("expected /api to be intercepted by API handler, got %s", string(body1))
+	}
+
+	// 2. /api/metrics -> intercepted by API handler
+	resp2, err := http.Get(gwServer.URL + "/api/metrics")
+	if err != nil || resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 OK for /api/metrics, got %v, err=%v", resp2.StatusCode, err)
+	}
+	body2, _ := io.ReadAll(resp2.Body)
+	resp2.Body.Close()
+	if string(body2) != `{"intercepted": true}` {
+		t.Errorf("expected /api/metrics to be intercepted by API handler, got %s", string(body2))
+	}
+
+	// 3. /apiXYZ -> NOT intercepted by API handler, routed to apixyz-service
+	resp3, err := http.Get(gwServer.URL + "/apiXYZ")
+	if err != nil || resp3.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 OK for /apiXYZ, got %v, err=%v", resp3.StatusCode, err)
+	}
+	body3, _ := io.ReadAll(resp3.Body)
+	resp3.Body.Close()
+	if string(body3) != "apixyz response" {
+		t.Errorf("expected /apiXYZ to reach apixyz-service, got %s", string(body3))
+	}
+}

@@ -1,0 +1,37 @@
+{
+  "listen_addr": "127.0.0.1:8080",
+  "services": [
+    {
+      "id": "users-service",
+      "name": "User Management Service",
+      "upstream": "http://127.0.0.1:8081",
+      "health_path": "/health"
+    },
+    {
+      "id": "orders-service",
+      "name": "Order Processing Service",
+      "upstream": "http://127.0.0.1:8082",
+      "health_path": "/healthz"
+    },
+    {
+      "id": "admin-service",
+      "name": "Admin Portal Service",
+      "upstream": "http://127.0.0.1:8083",
+      "health_path": "/status"
+    }
+  ],
+  "routes": [
+    {
+      "path": "/users/",
+      "service": "users-service"
+    },
+    {
+      "path": "/users/admin/",
+      "service": "admin-service"
+    },
+    {
+      "path": "/orders/",
+      "service": "orders-service"
+    }
+  ]
+}

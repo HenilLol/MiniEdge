@@ -112,9 +112,22 @@ func TestSimulationsAPI(t *testing.T) {
 
 	apiHandler := api.NewHandler(obsStore)
 	apiHandler.SetSimulationStore(simStore)
+	apiHandler.SetAPIKey("test-secret-key")
 
 	ts := httptest.NewServer(apiHandler)
 	defer ts.Close()
+
+	postWithKey := func(targetURL string, body []byte, key string) (*http.Response, error) {
+		req, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewBuffer(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if key != "" {
+			req.Header.Set("X-API-Key", key)
+		}
+		return http.DefaultClient.Do(req)
+	}
 
 	// 1. GET /api/simulations
 	resp, err := http.Get(ts.URL + "/api/simulations")
@@ -145,7 +158,7 @@ func TestSimulationsAPI(t *testing.T) {
 		Mode:      "FAIL",
 		DelayMs:   0,
 	})
-	respPost, err := http.Post(ts.URL+"/api/simulations", "application/json", bytes.NewBuffer(postBody))
+	respPost, err := postWithKey(ts.URL+"/api/simulations", postBody, "test-secret-key")
 	if err != nil {
 		t.Fatalf("POST /api/simulations failed: %v", err)
 	}
@@ -168,7 +181,7 @@ func TestSimulationsAPI(t *testing.T) {
 		ServiceID: "nonexistent",
 		Mode:      "FAIL",
 	})
-	respInvSvc, err := http.Post(ts.URL+"/api/simulations", "application/json", bytes.NewBuffer(postInvalidSvc))
+	respInvSvc, err := postWithKey(ts.URL+"/api/simulations", postInvalidSvc, "test-secret-key")
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
@@ -182,7 +195,7 @@ func TestSimulationsAPI(t *testing.T) {
 		ServiceID: "users",
 		Mode:      "INVALID_MODE",
 	})
-	respInvMode, err := http.Post(ts.URL+"/api/simulations", "application/json", bytes.NewBuffer(postInvalidMode))
+	respInvMode, err := postWithKey(ts.URL+"/api/simulations", postInvalidMode, "test-secret-key")
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
@@ -197,7 +210,7 @@ func TestSimulationsAPI(t *testing.T) {
 		Mode:      "DELAY",
 		DelayMs:   0, // DELAY requires delay > 0
 	})
-	respInvDelay, err := http.Post(ts.URL+"/api/simulations", "application/json", bytes.NewBuffer(postInvalidDelay))
+	respInvDelay, err := postWithKey(ts.URL+"/api/simulations", postInvalidDelay, "test-secret-key")
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
@@ -232,9 +245,22 @@ func TestRateLimitsAPI(t *testing.T) {
 
 	apiHandler := api.NewHandler(obsStore)
 	apiHandler.SetRateLimiterStore(rlStore)
+	apiHandler.SetAPIKey("test-secret-key")
 
 	ts := httptest.NewServer(apiHandler)
 	defer ts.Close()
+
+	postWithKey := func(targetURL string, body []byte, key string) (*http.Response, error) {
+		req, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewBuffer(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if key != "" {
+			req.Header.Set("X-API-Key", key)
+		}
+		return http.DefaultClient.Do(req)
+	}
 
 	// 1. GET /api/ratelimits
 	resp, err := http.Get(ts.URL + "/api/ratelimits")
@@ -262,7 +288,7 @@ func TestRateLimitsAPI(t *testing.T) {
 		Burst:             100,
 		Enabled:           true,
 	})
-	respPost, err := http.Post(ts.URL+"/api/ratelimits", "application/json", bytes.NewBuffer(postBody))
+	respPost, err := postWithKey(ts.URL+"/api/ratelimits", postBody, "test-secret-key")
 	if err != nil {
 		t.Fatalf("POST /api/ratelimits failed: %v", err)
 	}
@@ -280,7 +306,7 @@ func TestRateLimitsAPI(t *testing.T) {
 
 	// 3. POST /api/ratelimits invalid service ID
 	postInvalidSvc, _ := json.Marshal(api.SetRateLimitRequest{ServiceID: "unknown", RequestsPerSecond: 10, Burst: 20})
-	respInvSvc, err := http.Post(ts.URL+"/api/ratelimits", "application/json", bytes.NewBuffer(postInvalidSvc))
+	respInvSvc, err := postWithKey(ts.URL+"/api/ratelimits", postInvalidSvc, "test-secret-key")
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
@@ -291,7 +317,7 @@ func TestRateLimitsAPI(t *testing.T) {
 
 	// 4. POST /api/ratelimits invalid rate
 	postInvalidRate, _ := json.Marshal(api.SetRateLimitRequest{ServiceID: "users", RequestsPerSecond: 0, Burst: 20})
-	respInvRate, err := http.Post(ts.URL+"/api/ratelimits", "application/json", bytes.NewBuffer(postInvalidRate))
+	respInvRate, err := postWithKey(ts.URL+"/api/ratelimits", postInvalidRate, "test-secret-key")
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
@@ -337,6 +363,7 @@ func TestFullEndToEndRateLimitingFlow(t *testing.T) {
 
 	apiHandler := api.NewHandler(obsStore, healthStore)
 	apiHandler.SetRateLimiterStore(rlStore)
+	apiHandler.SetAPIKey("test-secret-key")
 
 	r := router.NewPrefixRouter(routes)
 	reg := router.NewStaticServiceRegistry(services)
@@ -351,7 +378,11 @@ func TestFullEndToEndRateLimitingFlow(t *testing.T) {
 
 	// 1. Set Rate Limit via POST /api/ratelimits to 1.0 req/sec, burst 1
 	postRl, _ := json.Marshal(api.SetRateLimitRequest{ServiceID: "users", RequestsPerSecond: 1.0, Burst: 1, Enabled: true})
-	respPost, err := http.Post(gwServer.URL+"/api/ratelimits", "application/json", bytes.NewBuffer(postRl))
+	reqPost, _ := http.NewRequest(http.MethodPost, gwServer.URL+"/api/ratelimits", bytes.NewBuffer(postRl))
+	reqPost.Header.Set("Content-Type", "application/json")
+	reqPost.Header.Set("X-API-Key", "test-secret-key")
+
+	respPost, err := http.DefaultClient.Do(reqPost)
 	if err != nil || respPost.StatusCode != http.StatusOK {
 		t.Fatalf("failed POST /api/ratelimits: %v, status=%v", err, respPost.StatusCode)
 	}
@@ -399,5 +430,154 @@ func TestFullEndToEndRateLimitingFlow(t *testing.T) {
 	u, exists := healthResp.Services["users"]
 	if !exists || u.Status != "UP" {
 		t.Errorf("expected health status UP independent of rate limiting, got %+v", u)
+	}
+}
+
+// Test 6 — Admin API Key Authentication (Missing, Wrong, Correct)
+func TestAdminAuthentication(t *testing.T) {
+	services := []model.Service{{ID: "users"}}
+	simStore := simulation.NewSimulationStore(services)
+	obsStore := observability.NewStore(100)
+
+	apiHandler := api.NewHandler(obsStore)
+	apiHandler.SetSimulationStore(simStore)
+	apiHandler.SetAPIKey("valid-admin-key")
+
+	ts := httptest.NewServer(apiHandler)
+	defer ts.Close()
+
+	postBody, _ := json.Marshal(api.SetSimulationRequest{ServiceID: "users", Mode: "FAIL"})
+
+	// 1. Missing API Key -> 401 Unauthorized
+	reqMissing, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/simulations", bytes.NewBuffer(postBody))
+	reqMissing.Header.Set("Content-Type", "application/json")
+	respMissing, err := http.DefaultClient.Do(reqMissing)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	respMissing.Body.Close()
+	if respMissing.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401 Unauthorized for missing API key, got %d", respMissing.StatusCode)
+	}
+
+	// 2. Wrong API Key -> 401 Unauthorized
+	reqWrong, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/simulations", bytes.NewBuffer(postBody))
+	reqWrong.Header.Set("Content-Type", "application/json")
+	reqWrong.Header.Set("X-API-Key", "wrong-admin-key")
+	respWrong, err := http.DefaultClient.Do(reqWrong)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	respWrong.Body.Close()
+	if respWrong.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401 Unauthorized for wrong API key, got %d", respWrong.StatusCode)
+	}
+
+	// 3. Correct API Key -> 200 OK
+	reqCorrect, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/simulations", bytes.NewBuffer(postBody))
+	reqCorrect.Header.Set("Content-Type", "application/json")
+	reqCorrect.Header.Set("X-API-Key", "valid-admin-key")
+	respCorrect, err := http.DefaultClient.Do(reqCorrect)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	respCorrect.Body.Close()
+	if respCorrect.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 OK for correct API key, got %d", respCorrect.StatusCode)
+	}
+}
+
+// Test 7 — CORS Response & OPTIONS Preflight
+func TestAPICORS(t *testing.T) {
+	obsStore := observability.NewStore(100)
+	apiHandler := api.NewHandler(obsStore)
+	apiHandler.SetAllowedOrigin("http://custom.origin.com")
+
+	ts := httptest.NewServer(apiHandler)
+	defer ts.Close()
+
+	// 1. Normal GET request has CORS header
+	respGet, err := http.Get(ts.URL + "/api/metrics")
+	if err != nil {
+		t.Fatalf("GET request failed: %v", err)
+	}
+	respGet.Body.Close()
+	if origin := respGet.Header.Get("Access-Control-Allow-Origin"); origin != "http://custom.origin.com" {
+		t.Errorf("expected Access-Control-Allow-Origin 'http://custom.origin.com', got '%s'", origin)
+	}
+
+	// 2. OPTIONS preflight request handling
+	reqOpt, _ := http.NewRequest(http.MethodOptions, ts.URL+"/api/simulations", nil)
+	respOpt, err := http.DefaultClient.Do(reqOpt)
+	if err != nil {
+		t.Fatalf("OPTIONS request failed: %v", err)
+	}
+	respOpt.Body.Close()
+	if respOpt.StatusCode != http.StatusNoContent {
+		t.Errorf("expected 204 No Content for OPTIONS, got %d", respOpt.StatusCode)
+	}
+	if allowMethods := respOpt.Header.Get("Access-Control-Allow-Methods"); allowMethods != "GET, POST, OPTIONS" {
+		t.Errorf("expected Allow-Methods header, got '%s'", allowMethods)
+	}
+}
+
+// Test 8 — Request Payload Size Limits
+func TestAPIPayloadLimits(t *testing.T) {
+	services := []model.Service{{ID: "users"}}
+	simStore := simulation.NewSimulationStore(services)
+	obsStore := observability.NewStore(100)
+
+	apiHandler := api.NewHandler(obsStore)
+	apiHandler.SetSimulationStore(simStore)
+	apiHandler.SetAPIKey("valid-key")
+
+	ts := httptest.NewServer(apiHandler)
+	defer ts.Close()
+
+	// 1. Oversized body > 4096 bytes -> 413 Payload Too Large
+	largePadding := make([]byte, 5000)
+	for i := range largePadding {
+		largePadding[i] = 'a'
+	}
+	oversizedJSON, _ := json.Marshal(map[string]string{
+		"service_id": "users",
+		"mode":       "FAIL",
+		"padding":    string(largePadding),
+	})
+
+	reqLarge, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/simulations", bytes.NewBuffer(oversizedJSON))
+	reqLarge.Header.Set("Content-Type", "application/json")
+	reqLarge.Header.Set("X-API-Key", "valid-key")
+
+	respLarge, err := http.DefaultClient.Do(reqLarge)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer respLarge.Body.Close()
+
+	if respLarge.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413 Payload Too Large for oversized body, got %d", respLarge.StatusCode)
+	}
+
+	var jsonErr map[string]string
+	_ = json.NewDecoder(respLarge.Body).Decode(&jsonErr)
+	if jsonErr["error"] != "payload_too_large" {
+		t.Errorf("expected error 'payload_too_large', got '%s'", jsonErr["error"])
+	}
+
+	// 2. Normal-sized valid POST succeeds -> 200 OK
+	normalJSON, _ := json.Marshal(api.SetSimulationRequest{ServiceID: "users", Mode: "NORMAL"})
+	reqNormal, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/simulations", bytes.NewBuffer(normalJSON))
+	reqNormal.Header.Set("Content-Type", "application/json")
+	reqNormal.Header.Set("X-API-Key", "valid-key")
+
+	respNormal, err := http.DefaultClient.Do(reqNormal)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	respNormal.Body.Close()
+
+	if respNormal.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 OK for normal payload, got %d", respNormal.StatusCode)
 	}
 }

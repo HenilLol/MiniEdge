@@ -66,7 +66,7 @@ func (gh *GatewayHandler) SetRateLimiter(rl RateLimiter) {
 }
 
 func (gh *GatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if strings.HasPrefix(r.URL.Path, "/api/") && gh.apiHandler != nil {
+	if (r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/")) && gh.apiHandler != nil {
 		gh.apiHandler.ServeHTTP(w, r)
 		return
 	}
