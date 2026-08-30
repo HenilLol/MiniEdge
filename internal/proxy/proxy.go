@@ -88,9 +88,31 @@ func (sp *ServiceProxy) getOrCreateProxy(svc model.Service) (*httputil.ReversePr
 
 	newRP := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
+			// Capture original incoming client Host before modifying req.Host
+			origHost := req.Host
+			if origHost == "" && req.URL != nil {
+				origHost = req.URL.Host
+			}
+
 			req.URL.Scheme = parsedURL.Scheme
 			req.URL.Host = parsedURL.Host
 			req.Host = parsedURL.Host
+
+			// Handle upstream base path joining
+			if parsedURL.Path != "" {
+				if parsedURL.RawPath != "" || req.URL.RawPath != "" {
+					targetRaw := parsedURL.RawPath
+					if targetRaw == "" {
+						targetRaw = url.PathEscape(parsedURL.Path)
+					}
+					reqRaw := req.URL.RawPath
+					if reqRaw == "" {
+						reqRaw = url.PathEscape(req.URL.Path)
+					}
+					req.URL.RawPath = joinPaths(targetRaw, reqRaw)
+				}
+				req.URL.Path = joinPaths(parsedURL.Path, req.URL.Path)
+			}
 
 			// Combine query strings if upstream URL specifies raw query
 			if parsedURL.RawQuery != "" {
@@ -108,7 +130,9 @@ func (sp *ServiceProxy) getOrCreateProxy(svc model.Service) (*httputil.ReversePr
 				}
 				req.Header.Set("X-Forwarded-For", clientIP)
 			}
-			req.Header.Set("X-Forwarded-Host", req.Host)
+			if origHost != "" {
+				req.Header.Set("X-Forwarded-Host", origHost)
+			}
 			if req.TLS != nil {
 				req.Header.Set("X-Forwarded-Proto", "https")
 			} else {
@@ -142,6 +166,23 @@ func (sp *ServiceProxy) getOrCreateProxy(svc model.Service) (*httputil.ReversePr
 
 	sp.proxies[svc.ID] = newRP
 	return newRP, nil
+}
+
+func joinPaths(targetPath, reqPath string) string {
+	if targetPath == "" || targetPath == "/" {
+		return reqPath
+	}
+	targetHasSuffix := strings.HasSuffix(targetPath, "/")
+	reqHasPrefix := strings.HasPrefix(reqPath, "/")
+
+	switch {
+	case targetHasSuffix && reqHasPrefix:
+		return targetPath + reqPath[1:]
+	case !targetHasSuffix && !reqHasPrefix:
+		return targetPath + "/" + reqPath
+	default:
+		return targetPath + reqPath
+	}
 }
 
 func isTimeoutError(err error) bool {

@@ -1,9 +1,12 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"miniedge/internal/model"
@@ -124,21 +127,36 @@ type SetRateLimitResponse struct {
 
 // Handler handles control REST endpoints (/api/logs, /api/metrics, /api/health, /api/simulations, /api/ratelimits).
 type Handler struct {
-	store       *observability.ObservabilityStore
-	healthStore model.HealthProvider
-	simStore    *simulation.SimulationStore
-	rlStore     *ratelimit.RateLimiterStore
+	store         *observability.ObservabilityStore
+	healthStore   model.HealthProvider
+	simStore      *simulation.SimulationStore
+	rlStore       *ratelimit.RateLimiterStore
+	apiKey        string
+	allowedOrigin string
 }
 
 // NewHandler creates a new API Handler instance around ObservabilityStore and optional HealthProvider.
 func NewHandler(store *observability.ObservabilityStore, healthProvider ...model.HealthProvider) *Handler {
 	h := &Handler{
-		store: store,
+		store:         store,
+		allowedOrigin: "http://localhost:3000",
 	}
 	if len(healthProvider) > 0 {
 		h.healthStore = healthProvider[0]
 	}
 	return h
+}
+
+// SetAPIKey sets the administrative API key required for POST mutation requests.
+func (h *Handler) SetAPIKey(key string) {
+	h.apiKey = key
+}
+
+// SetAllowedOrigin configures the CORS Access-Control-Allow-Origin header value.
+func (h *Handler) SetAllowedOrigin(origin string) {
+	if origin != "" {
+		h.allowedOrigin = origin
+	}
 }
 
 // SetHealthProvider sets or updates the HealthProvider dependency.
@@ -156,7 +174,32 @@ func (h *Handler) SetRateLimiterStore(rl *ratelimit.RateLimiterStore) {
 	h.rlStore = rl
 }
 
+func (h *Handler) authenticate(r *http.Request) bool {
+	if h.apiKey == "" {
+		return false
+	}
+	clientKey := r.Header.Get("X-API-Key")
+	if clientKey == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(clientKey), []byte(h.apiKey)) == 1
+}
+
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	origin := h.allowedOrigin
+	if origin == "" {
+		origin = "http://localhost:3000"
+	}
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Key, X-Request-ID")
+	w.Header().Set("Access-Control-Max-Age", "86400")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	path := r.URL.Path
 
 	switch path {
@@ -332,8 +375,20 @@ func (h *Handler) handleGetSimulations(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handlePostSimulations(w http.ResponseWriter, r *http.Request) {
+	if !h.authenticate(r) {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized", "missing or invalid API key")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+
 	var req SetSimulationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) || strings.Contains(err.Error(), "request body too large") {
+			writeJSONError(w, http.StatusRequestEntityTooLarge, "payload_too_large", "request payload exceeds maximum allowed size")
+			return
+		}
 		writeJSONError(w, http.StatusBadRequest, "invalid_json", "malformed JSON request body")
 		return
 	}
@@ -423,8 +478,20 @@ func (h *Handler) handleGetRateLimits(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handlePostRateLimits(w http.ResponseWriter, r *http.Request) {
+	if !h.authenticate(r) {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized", "missing or invalid API key")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+
 	var req SetRateLimitRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) || strings.Contains(err.Error(), "request body too large") {
+			writeJSONError(w, http.StatusRequestEntityTooLarge, "payload_too_large", "request payload exceeds maximum allowed size")
+			return
+		}
 		writeJSONError(w, http.StatusBadRequest, "invalid_json", "malformed JSON request body")
 		return
 	}
