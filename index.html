@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#090d16">
+  <meta name="description" content="MiniEdge — Zero-Dependency Local Developer Gateway & Microservices Command Center">
+  <title>MiniEdge — Developer Command Center</title>
+
+  <!-- Zero-Dependency Native Stylesheets -->
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/layout.css">
+  <link rel="stylesheet" href="styles/components.css">
+</head>
+<body>
+  <div class="app-wrapper">
+    <!-- Header Section -->
+    <div id="header-container" class="header-container"></div>
+
+    <!-- Main Dashboard Container -->
+    <main class="main-container">
+      <!-- 1. Overview KPIs -->
+      <section id="overview-metrics-container" aria-label="System Overview Metrics"></section>
+
+      <!-- 2. Microservices Status Cards -->
+      <section id="service-cards-container" class="dashboard-section" aria-label="Microservice Nodes"></section>
+
+      <!-- 3. Service Dependency Topology Map -->
+      <section id="service-map-container" class="dashboard-section" aria-label="Service Dependency Map"></section>
+
+      <!-- 4. Real-time Telemetry & Charts -->
+      <section id="metrics-charts-container" class="dashboard-section" aria-label="Telemetry and Metrics"></section>
+
+      <!-- 5. Request Explorer Table -->
+      <section id="request-explorer-container" class="dashboard-section" aria-label="Request Explorer"></section>
+
+      <!-- 6. Developer Log Viewer Console -->
+      <section id="log-viewer-container" class="dashboard-section" aria-label="Developer Log Stream"></section>
+
+      <!-- 7. Fault Injection & Simulation Studio -->
+      <section id="simulation-control-container" class="dashboard-section" aria-label="Failure Simulation Studio"></section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="dashboard-footer">
+      <div class="footer-content">
+        <div class="footer-left">
+          <span>MiniEdge Gateway v1.0.0-dev • Built for Hackathon (Zero Runtime Dependencies)</span>
+        </div>
+        <div class="footer-links">
+          <span class="footer-shortcut">Shortcuts: <kbd class="font-mono">[Space]</kbd> Pause/Resume • <kbd class="font-mono">[R]</kbd> Refresh</span>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Main ES6 Application Bootstrapper -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
