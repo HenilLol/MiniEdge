@@ -88,8 +88,13 @@ func main() {
 
 	gwHandler.SetAPIHandler(apiHandler)
 
+	listenAddr := cfg.ListenAddr
+	if envPort := os.Getenv("PORT"); envPort != "" {
+		listenAddr = "0.0.0.0:" + envPort
+	}
+
 	// 8. Server Construction
-	server := gateway.NewServer(cfg.ListenAddr, gwHandler)
+	server := gateway.NewServer(listenAddr, gwHandler)
 
 	// 9. Start Health Worker
 	healthWorker.Start()
@@ -97,7 +102,7 @@ func main() {
 	// 10. Start Server in background goroutine
 	serverErr := make(chan error, 1)
 	go func() {
-		log.Printf("MiniEdge gateway server listening on %s", cfg.ListenAddr)
+		log.Printf("MiniEdge gateway server listening on %s", listenAddr)
 		if err := server.Start(); err != nil {
 			serverErr <- err
 		}

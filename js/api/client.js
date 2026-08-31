@@ -15,8 +15,8 @@
 
 class ApiClient {
   constructor() {
-    this.mode = 'mock'; // 'mock' | 'real'
-    this.baseUrl = 'http://localhost:8080';
+    this.mode = typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_API_MODE ? process.env.NEXT_PUBLIC_API_MODE : 'real';
+    this.baseUrl = typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_API_BASE_URL ? process.env.NEXT_PUBLIC_API_BASE_URL : 'http://localhost:8080';
   }
 
   setMode(mode) {
